@@ -3,5 +3,8 @@
   "description": "Create animated GIFs with Nano Banana from your images and prompts.",
   "requestFramePermissions": [
     "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }

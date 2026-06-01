@@ -44,16 +44,5 @@ ${baseInstruction}`;
       return '';
   }
 
-  return `
-${creativeDirection}
-${frameDurationInstruction}
-
-REQUIRED RESPONSE FORMAT:
-Your response MUST contain two parts:
-1. A valid JSON object containing a single key: "frameDuration". The value must be a number representing the milliseconds per frame (between 80 and 2000, per instructions above). Do not wrap the JSON in markdown backticks.
-2. The ${frameCount}-frame sprite sheet image.
-
-Example of the JSON part:
-{"frameDuration": 150}
-`;
+  return creativeDirection;
 };

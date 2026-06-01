@@ -301,7 +301,7 @@ IMAGE OUTPUT REQUIREMENTS:
 
   const handleCameraError = useCallback((message: string) => {
     setError(message);
-    setAppState(AppState.Error);
+    setIsCameraOpen(false);
   }, []);
 
   const handleUploadClick = () => {
@@ -432,7 +432,7 @@ IMAGE OUTPUT REQUIREMENTS:
             {error && (
               <div className="w-full bg-red-900/50 border border-red-700 text-red-100 px-4 py-3 rounded-lg relative mb-4 flex items-center justify-between animate-shake" role="alert">
                 <div className="pr-4">
-                  <strong className="font-bold block">Ohoh Bananimate couldn't Bananimate that one. Try again possibly with a new image and prompt ...?</strong>
+                  <strong className="font-bold block text-sm sm:text-base">{error}</strong>
                 </div>
                 <button
                   onClick={() => setError(null)}

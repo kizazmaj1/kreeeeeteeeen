@@ -45,9 +45,19 @@ const CameraView = forwardRef<CameraViewHandles, CameraViewProps>(({ onCapture, 
           videoRef.current.srcObject = mediaStream;
         }
         streamRef.current = mediaStream;
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error accessing camera:", err);
-        onError(`Could not access ${facingMode} camera. Please check permissions or try again.`);
+        let msg = `Could not access the camera.`;
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || err.name === 'SecurityError') {
+          msg = `Camera permission was denied. If you are using the app within an embedded preview pane (iframe), modern browser security restrictions may block camera access. Try opening the app in a new browser tab/window, or upload an image from your device instead!`;
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          msg = `No camera device found on this system. Please connect a working webcam, or select "Upload Image" instead!`;
+        } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+          msg = `The camera is already in hold or being used by another application/tab. Please close other applications that use the camera and try again, or upload an image!`;
+        } else {
+          msg = `Error accessing camera: ${err.message || err.name || 'Permission denied'}. Please check your camera settings/permissions, open the application in a new window, or try uploading an image.`;
+        }
+        onError(msg);
       }
     };
 

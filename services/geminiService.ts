@@ -5,7 +5,7 @@
 
 
 
-import { GoogleGenAI, GenerateContentResponse, Modality } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { Frame } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -48,9 +48,6 @@ export const generateAnimationAssets = async (
             role: "user",
             parts: parts,
         }],
-        config: {
-            responseModalities: [Modality.IMAGE, Modality.TEXT],
-        },
     });
 
     const responseParts = imageGenResponse.candidates?.[0]?.content?.parts;
@@ -66,23 +63,31 @@ export const generateAnimationAssets = async (
     }
     const imageData = { data: imagePart.inlineData.data, mimeType: imagePart.inlineData.mimeType };
     
-    // Extract and parse frame duration from the text part
-    let frameDuration = 120; // Default fallback value
-    const textPart = responseParts.find(p => p.text);
-    if (textPart?.text) {
-        try {
-            // The model might return just the JSON, or text with JSON embedded.
-            // A simple regex to find a JSON-like string.
-            const jsonStringMatch = textPart.text.match(/{.*}/s);
-            if (jsonStringMatch) {
-                const parsed = JSON.parse(jsonStringMatch[0]);
-                if (parsed.frameDuration && typeof parsed.frameDuration === 'number') {
-                    frameDuration = parsed.frameDuration;
-                }
-            }
-        } catch (e) {
-            console.warn("Could not parse frame duration from model response. Using default.", e);
-        }
+    // Smart heuristic for animation frame duration based on prompt keywords
+    let frameDuration = 150; // Default fallback value
+    const promptLower = imagePrompt.toLowerCase();
+    if (
+        promptLower.includes('slow') ||
+        promptLower.includes('maker') ||
+        promptLower.includes('story') ||
+        promptLower.includes('chill') ||
+        promptLower.includes('pencil') ||
+        promptLower.includes('sketch') ||
+        promptLower.includes('stop-motion') ||
+        promptLower.includes('stop motion')
+    ) {
+        frameDuration = 250;
+    } else if (
+        promptLower.includes('fast') ||
+        promptLower.includes('speed') ||
+        promptLower.includes('run') ||
+        promptLower.includes('rapid') ||
+        promptLower.includes('quick') ||
+        promptLower.includes('spin') ||
+        promptLower.includes('game') ||
+        promptLower.includes('dynamic')
+    ) {
+        frameDuration = 100;
     }
 
     return { imageData, frames: [], frameDuration };

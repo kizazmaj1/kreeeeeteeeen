@@ -101,6 +101,7 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({ assets, onRegenerate,
     speed: assets.frameDuration || DEFAULT_CONFIG.speed,
   });
   const [viewMode, setViewMode] = useState<'animation' | 'spritesheet'>('animation');
+  const [playMode, setPlayMode] = useState<'loop' | 'pingpong'>('loop');
   const animationFrameId = useRef<number | null>(null);
   const animationStartTimeRef = useRef<number>(0);
   
@@ -157,7 +158,14 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({ assets, onRegenerate,
     if (frames.length === 0 || !canvasRef.current) return;
     setIsExporting(true);
 
-    const imageUrls = frames.map(frame => frame.src);
+    let imageUrls = frames.map(frame => frame.src);
+    if (playMode === 'pingpong' && frames.length > 2) {
+      const pingpongImages = [...imageUrls];
+      for (let i = frames.length - 2; i > 0; i--) {
+        pingpongImages.push(imageUrls[i]);
+      }
+      imageUrls = pingpongImages;
+    }
     const intervalInSeconds = config.speed / 1000;
     const gifWidth = canvasRef.current.width;
     const gifHeight = canvasRef.current.height;
@@ -181,13 +189,20 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({ assets, onRegenerate,
             console.error('GIF export failed:', obj.errorMsg);
         }
     });
-  }, [frames, config.speed]);
+  }, [frames, config.speed, playMode]);
 
   const performShare = useCallback(async () => {
     if (!isShareAvailable || frames.length === 0 || !canvasRef.current) return;
     setIsSharing(true);
 
-    const imageUrls = frames.map(frame => frame.src);
+    let imageUrls = frames.map(frame => frame.src);
+    if (playMode === 'pingpong' && frames.length > 2) {
+      const pingpongImages = [...imageUrls];
+      for (let i = frames.length - 2; i > 0; i--) {
+        pingpongImages.push(imageUrls[i]);
+      }
+      imageUrls = pingpongImages;
+    }
     // gifshot `interval` is in seconds, so divide ms by 1000.
     const intervalInSeconds = config.speed / 1000;
 
@@ -224,7 +239,7 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({ assets, onRegenerate,
             alert(`Could not create GIF for sharing: ${obj.errorMsg}`);
         }
     });
-  }, [frames, config.speed, isShareAvailable]);
+  }, [frames, config.speed, isShareAvailable, playMode]);
   
   useEffect(() => {
     // This effect runs after the component re-renders.
@@ -300,12 +315,106 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({ assets, onRegenerate,
     const animate = (timestamp: number) => {
       if(animationStartTimeRef.current === 0) animationStartTimeRef.current = timestamp;
       
-      const totalDuration = frames.length * config.speed;
-      const elapsedTime = (timestamp - animationStartTimeRef.current) % totalDuration;
-      const currentFrameIndex = Math.floor(elapsedTime / config.speed);
+      const numFrames = frames.length;
+      let currentFrameIndex = 0;
+      let totalDuration = numFrames * config.speed;
+      let elapsedTime = 0;
+
+      if (numFrames > 1) {
+        if (playMode === 'pingpong') {
+          const totalSteps = (numFrames * 2) - 2;
+          totalDuration = totalSteps * config.speed;
+          elapsedTime = (timestamp - animationStartTimeRef.current) % totalDuration;
+          const stepIndex = Math.floor(elapsedTime / config.speed);
+          if (stepIndex < numFrames) {
+            currentFrameIndex = stepIndex;
+          } else {
+            currentFrameIndex = totalSteps - stepIndex;
+          }
+        } else {
+          totalDuration = numFrames * config.speed;
+          elapsedTime = (timestamp - animationStartTimeRef.current) % totalDuration;
+          currentFrameIndex = Math.floor(elapsedTime / config.speed);
+        }
+      } else {
+        totalDuration = config.speed;
+        elapsedTime = 0;
+      }
       
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(frames[currentFrameIndex], 0, 0, canvas.width, canvas.height);
+      
+      // Draw premium visual loop indicator HUD on the canvas
+      if (numFrames > 1) {
+        const trackY = canvas.height - 32;
+        const marginX = 80;
+        const trackWidth = canvas.width - (marginX * 2);
+        
+        // 1. Draw elegant dark pill background capsule for track and text HUD
+        const paddingX = 16;
+        const hudWidth = trackWidth + (paddingX * 2);
+        const hudHeight = 44;
+        const hudX = marginX - paddingX;
+        const hudY = trackY - 26;
+        
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.beginPath();
+        if (typeof ctx.roundRect === 'function') {
+          ctx.roundRect(hudX, hudY, hudWidth, hudHeight, 12);
+        } else {
+          ctx.rect(hudX, hudY, hudWidth, hudHeight);
+        }
+        ctx.fill();
+
+        // 2. Draw frame progression numeric/text status
+        ctx.fillStyle = '#facc15'; // Banana Yellow
+        ctx.font = 'bold 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`FRAME ${currentFrameIndex + 1} / ${numFrames}`, canvas.width / 2, trackY - 14);
+
+        // 3. Draw horizontal progress track line
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(marginX, trackY + 8);
+        ctx.lineTo(canvas.width - marginX, trackY + 8);
+        ctx.stroke();
+
+        // 4. Draw continuous playback progression stream highlight
+        const elapsedFraction = elapsedTime / totalDuration;
+        const progressX = marginX + (trackWidth * elapsedFraction);
+        ctx.strokeStyle = '#facc15'; // Banana Yellow
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(marginX, trackY + 8);
+        ctx.lineTo(progressX, trackY + 8);
+        ctx.stroke();
+
+        // 5. Draw individual discrete frame tick dots
+        for (let i = 0; i < numFrames; i++) {
+          const tickX = marginX + (trackWidth * (i / (numFrames - 1)));
+          ctx.beginPath();
+          ctx.arc(tickX, trackY + 8, i === currentFrameIndex ? 5 : 3.5, 0, Math.PI * 2);
+          
+          if (i === currentFrameIndex) {
+            ctx.fillStyle = '#ffffff'; // White for active tick center
+            ctx.shadowColor = '#facc15';
+            ctx.shadowBlur = 6;
+          } else if (i < currentFrameIndex) {
+            ctx.fillStyle = '#eab308'; // Darker gold for traversed frames
+            ctx.shadowBlur = 0;
+          } else {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.shadowBlur = 0;
+          }
+          ctx.fill();
+        }
+        
+        // Reset canvas context shadow parameter to avoid leaking styling
+        ctx.shadowBlur = 0;
+      }
       
       animationFrameId.current = requestAnimationFrame(animate);
     };
@@ -318,7 +427,7 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({ assets, onRegenerate,
         animationFrameId.current = null;
       }
     };
-  }, [frames, config, isLoading, viewMode]);
+  }, [frames, config, isLoading, viewMode, playMode]);
   
   const getImageDisplayDimensions = useCallback(() => {
     if (!spriteSheetImage || !containerRef.current) {
@@ -481,9 +590,49 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({ assets, onRegenerate,
         )}
         <canvas ref={overlayCanvasRef} className="absolute top-0 left-0 pointer-events-none" />
         {showControls && viewMode === 'animation' && (
-          <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-4 z-30 backdrop-blur-sm space-y-2">
+          <div className="absolute bottom-0 left-0 right-0 bg-black/85 p-4 z-30 backdrop-blur-md border-t border-white/10 rounded-b-lg space-y-4 shadow-xl">
             <ControlSlider label="Animation Speed (ms/frame)" value={config.speed} min={16} max={2000} step={1} onChange={v => setConfig(c => ({...c, speed: v}))} helpText="Lower values are faster. Frame duration can be up to 2 seconds."/>
-            <button onClick={() => setConfig({ ...DEFAULT_CONFIG, speed: assets.frameDuration || DEFAULT_CONFIG.speed })} className="text-sm text-indigo-400 hover:text-indigo-300">Reset to Defaults</button>
+            
+            <div className="flex flex-col gap-1.5 align-left text-left">
+              <span className="text-sm font-medium text-gray-300">Playback Mode</span>
+              <div className="flex bg-gray-950 border border-gray-800 p-0.5 rounded-lg w-full max-w-sm">
+                <button
+                  type="button"
+                  onClick={() => setPlayMode('loop')}
+                  className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md transition-all ${
+                    playMode === 'loop' 
+                      ? 'bg-yellow-400 text-black shadow-md' 
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Loop
+                </button>
+                <button
+                  type="button"
+                  id="pingpong-btn"
+                  onClick={() => setPlayMode('pingpong')}
+                  className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md transition-all ${
+                    playMode === 'pingpong' 
+                      ? 'bg-yellow-400 text-black shadow-md' 
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Ping-Pong
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-between">
+              <button 
+                onClick={() => {
+                  setConfig({ ...DEFAULT_CONFIG, speed: assets.frameDuration || DEFAULT_CONFIG.speed });
+                  setPlayMode('loop');
+                }} 
+                className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors font-semibold"
+              >
+                Reset to Defaults
+              </button>
+            </div>
           </div>
         )}
       </div>
